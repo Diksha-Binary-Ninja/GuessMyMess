@@ -124,136 +124,157 @@
   </div>
   <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
   <script>
-    const socket = io();
-    const localVideo = document.getElementById('localVideo');
-    const remoteFrame = document.getElementById('remoteFrame');
-    const chatBox = document.getElementById('chatBox');
-    const msgInput = document.getElementById('msgInput');
-    const sendBtn = document.getElementById('sendBtn');
-    const correctBtn = document.getElementById('correctBtn');
-    const roomInput = document.getElementById('roomInput');
-    const roomCodeDisplay = document.getElementById('roomCodeDisplay');
-    const nameInputSection = document.getElementById('nameInputSection');
-    const playerNameInput = document.getElementById('playerName');
-    const enterBtn = document.getElementById('enterBtn');
-    const roomSection = document.getElementById('roomSection');
+  const socket = io();
+  const localVideo = document.getElementById('localVideo');
+  const remoteFrame = document.getElementById('remoteFrame');
+  const chatBox = document.getElementById('chatBox');
+  const msgInput = document.getElementById('msgInput');
+  const sendBtn = document.getElementById('sendBtn');
+  const correctBtn = document.getElementById('correctBtn');
+  const roomInput = document.getElementById('roomInput');
+  const roomCodeDisplay = document.getElementById('roomCodeDisplay');
+  const nameInputSection = document.getElementById('nameInputSection');
+  const playerNameInput = document.getElementById('playerName');
+  const enterBtn = document.getElementById('enterBtn');
+  const roomSection = document.getElementById('roomSection');
 
-    let roomCode = '';
-    let playerName = '';
-    let localStream;
+  let roomCode = '';
+  let playerName = '';
+  let localStream;
+  let isMyTurnToDraw = false;
+  let frameInterval;
 
-    enterBtn.onclick = () => {
-      const name = playerNameInput.value.trim();
-      if (!name) return alert('Please enter your name');
-      playerName = name;
-      nameInputSection.style.display = 'none';
-      roomSection.style.display = 'block';
-    };
+  enterBtn.onclick = () => {
+    const name = playerNameInput.value.trim();
+    if (!name) return alert('Please enter your name');
+    playerName = name;
+    nameInputSection.style.display = 'none';
+    roomSection.style.display = 'block';
+  };
 
-    async function startCamera() {
-      try {
-        localStream = await navigator.mediaDevices.getUserMedia({ video: true });
-        localVideo.srcObject = localStream;
-        streamFrames();
-      } catch (err) {
-        alert('Camera access denied or unavailable.');
-        console.error(err);
-      }
+  function appendMessage(msg) {
+    const div = document.createElement('div');
+    div.textContent = msg;
+    chatBox.appendChild(div);
+    chatBox.scrollTop = chatBox.scrollHeight;
+  }
+
+  function createRoom() {
+    socket.emit('create_room');
+  }
+
+  function joinRoom() {
+    roomCode = roomInput.value.trim();
+    if (!roomCode) return alert('Enter a valid room code.');
+    socket.emit('join_room', roomCode);
+  }
+
+  async function startCameraAndStream() {
+    try {
+      localStream = await navigator.mediaDevices.getUserMedia({ video: true });
+      localVideo.srcObject = localStream;
+      localVideo.style.display = 'block';
+      streamFrames();
+    } catch (err) {
+      alert('Camera access denied or unavailable.');
+      console.error(err);
     }
+  }
 
-    function streamFrames() {
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d');
-      canvas.width = 320;
-      canvas.height = 240;
+  function streamFrames() {
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    canvas.width = 320;
+    canvas.height = 240;
 
-      setInterval(() => {
-        if (!localStream) return;
-        ctx.drawImage(localVideo, 0, 0, canvas.width, canvas.height);
-        const dataURL = canvas.toDataURL('image/jpeg', 0.5);
-        socket.emit('frame', { room: roomCode, image: dataURL });
-      }, 300);
+    if (frameInterval) clearInterval(frameInterval);
+
+    frameInterval = setInterval(() => {
+      if (!localStream || !isMyTurnToDraw) return;
+      ctx.drawImage(localVideo, 0, 0, canvas.width, canvas.height);
+      const dataURL = canvas.toDataURL('image/jpeg', 0.5);
+      socket.emit('frame', { room: roomCode, image: dataURL });
+    }, 300);
+  }
+
+  socket.on('remote_frame', dataUrl => {
+    remoteFrame.src = dataUrl;
+  });
+
+  socket.on('room_created', code => {
+    roomCode = code;
+    roomCodeDisplay.innerText = `Room created: ${code}`;
+    roomInput.style.display = 'none';
+    document.querySelector("button[onclick='createRoom()']").style.display = 'none';
+    document.querySelector("button[onclick='joinRoom()']").style.display = 'none';
+  });
+
+  socket.on('start_game', () => {
+    roomSection.style.display = 'none';
+    chatBox.style.display = 'block';
+  });
+
+  socket.on('your-turn', async () => {
+    isMyTurnToDraw = true;
+    await startCameraAndStream();
+    correctBtn.style.display = 'inline-block';
+    msgInput.style.display = 'inline-block';
+    sendBtn.style.display = 'inline-block';
+    appendMessage('🎯 Your turn to draw!');
+  });
+
+  socket.on('opponent-turn', () => {
+    isMyTurnToDraw = false;
+    localVideo.style.display = 'none';
+    if (localStream) {
+      localStream.getTracks().forEach(track => track.stop());
+      localStream = null;
     }
+    if (frameInterval) clearInterval(frameInterval);
+    correctBtn.style.display = 'none';
+    msgInput.style.display = 'inline-block';
+    sendBtn.style.display = 'inline-block';
+    appendMessage('💬 Your turn to guess!');
+  });
 
-    socket.on('remote_frame', dataUrl => {
-      remoteFrame.src = dataUrl;
-    });
-
-    function appendMessage(msg) {
-      const div = document.createElement('div');
-      div.textContent = msg;
-      chatBox.appendChild(div);
-      chatBox.scrollTop = chatBox.scrollHeight;
-    }
-
-    function createRoom() {
-      startCamera();
-      socket.emit('create_room');
-    }
-
-    function joinRoom() {
-      roomCode = roomInput.value.trim();
-      if (!roomCode) return alert('Enter a valid room code.');
-      startCamera();
-      socket.emit('join_room', roomCode);
-    }
-
-    socket.on('room_created', code => {
-      roomCode = code;
-      roomCodeDisplay.innerText = `Room created: ${code}`;
-      roomInput.style.display = 'none';
-      document.querySelector("button[onclick='createRoom()']").style.display = 'none';
-      document.querySelector("button[onclick='joinRoom()']").style.display = 'none';
-    });
-
-    socket.on('start_game', () => {
-      roomSection.style.display = 'none';
-      chatBox.style.display = 'block';
-    });
-
-    socket.on('your-turn', () => {
-      correctBtn.style.display = 'inline-block';
-      msgInput.style.display = 'inline-block';
-      sendBtn.style.display = 'inline-block';
+  socket.on('switch-turns', async () => {
+    isMyTurnToDraw = !isMyTurnToDraw;
+    if (isMyTurnToDraw) {
       appendMessage('🎯 Your turn to draw!');
-    });
-
-    socket.on('opponent-turn', () => {
-      correctBtn.style.display = 'none';
-      msgInput.style.display = 'inline-block';
-      sendBtn.style.display = 'inline-block';
+      await startCameraAndStream();
+      correctBtn.style.display = 'inline-block';
+    } else {
       appendMessage('💬 Your turn to guess!');
-    });
-
-    socket.on('switch-turns', () => {
-      if (correctBtn.style.display === 'inline-block') {
-        correctBtn.style.display = 'none';
-        appendMessage('💬 Your turn to guess!');
-      } else {
-        correctBtn.style.display = 'inline-block';
-        appendMessage('🎯 Your turn to draw!');
+      if (localStream) {
+        localStream.getTracks().forEach(track => track.stop());
+        localStream = null;
       }
-    });
+      localVideo.style.display = 'none';
+      correctBtn.style.display = 'none';
+      if (frameInterval) clearInterval(frameInterval);
+    }
+  });
 
-    sendBtn.onclick = () => {
-  const msg = msgInput.value;
-  if (!msg) return;
-  appendMessage(`${playerName}: ${msg}`); // Show local message immediately
-  socket.emit('message', { name: playerName, text: msg });
-  msgInput.value = '';
-};
+  sendBtn.onclick = () => {
+    const msg = msgInput.value;
+    if (!msg) return;
+    appendMessage(`${playerName}: ${msg}`);
+    socket.emit('message', { name: playerName, text: msg });
+    msgInput.value = '';
+  };
 
-    correctBtn.onclick = () => {
-      socket.emit('correct');
-    };
+  correctBtn.onclick = () => {
+    socket.emit('correct');
+  };
 
-    socket.on('message', data => {
-  appendMessage(`${data.name}: ${data.text}`);
-});
+  socket.on('message', data => {
+    appendMessage(`${data.name}: ${data.text}`);
+  });
 
-    socket.on('error_msg', msg => {
-      alert(msg);
-    });
-  </script>
+  socket.on('error_msg', msg => {
+    alert(msg);
+  });
+</script>
+
 </body>
 </html>
