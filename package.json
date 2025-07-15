@@ -1,0 +1,25 @@
+{
+  "name": "guessmymess",
+  "version": "1.0.0",
+  "description": "Real-time drawing and guessing game using webcam frames over Socket.IO",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "socket.io": "^4.7.2"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "keywords": [
+    "socket.io",
+    "drawing",
+    "multiplayer",
+    "game",
+    "guessing"
+  ],
+  "author": "Diksha,Ayush Kumar Verma",
+  "license": "MIT"
+}
