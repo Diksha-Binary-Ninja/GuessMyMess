@@ -23,12 +23,14 @@ io.on('connection', (socket) => {
     rooms[code] = [socket.id];
     socket.join(code);
     socket.emit('room_created', code);
+    console.log(`Room created: ${code} by ${socket.id}`);
   });
 
   socket.on('join_room', (code) => {
     if (rooms[code] && rooms[code].length === 1) {
       rooms[code].push(socket.id);
       socket.join(code);
+      console.log(`Player joined room: ${code} - ${socket.id}`);
       io.to(code).emit('start_game');
       io.to(rooms[code][0]).emit('your-turn');
       io.to(rooms[code][1]).emit('opponent-turn');
@@ -37,7 +39,13 @@ io.on('connection', (socket) => {
     }
   });
 
-  // WebRTC signaling
+  // ✅ Video frame relay: drawer sends to opponent
+  socket.on('frame', ({ room, image }) => {
+    console.log(`Frame relayed from ${socket.id} in room ${room}`);
+    socket.to(room).emit('remote_frame', image);
+  });
+
+  // (Optional) WebRTC retained for potential future upgrade
   socket.on('offer', ({ offer, room }) => {
     socket.to(room).emit('offer', { offer });
   });
@@ -50,12 +58,15 @@ io.on('connection', (socket) => {
     socket.to(room).emit('ice-candidate', { candidate });
   });
 
-  // Chat & Game
+  // Chat messages
   socket.on('message', (msg) => {
     const room = Object.keys(rooms).find(code => rooms[code].includes(socket.id));
-    if (room) socket.to(room).emit('message', msg);
+    if (room) {
+      socket.to(room).emit('message', msg);
+    }
   });
 
+  // Handle correct guess
   socket.on('correct', () => {
     const room = Object.keys(rooms).find(code => rooms[code].includes(socket.id));
     if (room) {
@@ -64,6 +75,7 @@ io.on('connection', (socket) => {
     }
   });
 
+  // Handle disconnections
   socket.on('disconnect', () => {
     for (const code in rooms) {
       if (rooms[code].includes(socket.id)) {
